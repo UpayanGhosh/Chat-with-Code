@@ -1,0 +1,7 @@
+langchain
+langchain-core
+langchain-ollama
+langchain-chroma
+langchain-text-splitters
+python-dotenv
+rich

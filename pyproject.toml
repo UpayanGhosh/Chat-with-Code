@@ -1,0 +1,19 @@
+[project]
+name = "chat-with-code"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "langchain-community",
+    "langchain-ollama",
+    "langchain-chroma",
+    "langchain-text-splitters",
+    "pathspec",
+    "tiktoken",
+    "langchain>=1.2.0",
+    "langchain-core>=1.2.3",
+    "python-dotenv>=1.2.1",
+    "rich>=14.2.0",
+]
+
