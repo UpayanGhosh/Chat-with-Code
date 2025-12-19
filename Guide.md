@@ -1,6 +1,6 @@
 # Local AI Agents — a from-scratch investigative walkthrough (Ollama + LangChain + RAG)
 
-In this article, we will reconstruct your project **as if we were building it from scratch**, one design decision at a time, until every line of your handwritten Python files feels inevitable.
+In this article, we will reconstruct this project **as if we were building it from scratch**, one design decision at a time, until every line of handwritten Python files feels inevitable.
 
 The project title I’ll use throughout is **“Local AI Agents”**, and the core idea is deceptively simple:
 
