@@ -192,8 +192,43 @@ You are importing a single variable, `retriever`, from your own file `codebase.p
 It’s created at the bottom of `codebase.py` by calling:
 
 ```python
-retriever = vector_store.as_retriever(search_kwargs={"k": 6})
+retriever = vector_store.as_retriever(search_kwargs={"k": 10})
 ```
+
+---
+
+Fourth import:
+
+```python
+from rich.console import Console
+```
+
+### What it is
+`Console` is Rich’s central “terminal UI” object. It’s what lets us:
+
+- print styled output (`console.print(...)`)
+- show a live status spinner while something slow runs (`with console.status(...):`)
+
+### Why it exists in this project
+This project has two slow moments:
+
+- retrieval (vector similarity search + I/O)
+- generation (local model inference)
+
+Without a spinner, the terminal looks frozen. Rich makes it obvious the system is working.
+
+### What would break if we removed it
+Nothing about the RAG logic would break, but you’d lose the “loading / thinking” UX, and we’d need to replace `console.status(...)` and `console.print(...)` with plain `print(...)`.
+
+---
+
+Immediately after importing `Console`, `main.py` constructs it:
+
+```python
+console = Console()
+```
+
+This creates a single shared console instance used throughout the interactive loop.
 
 ### Why we chose this design
 You are drawing a boundary:
@@ -357,9 +392,13 @@ while True:
     print("------------------------------------------------------------------------------")
     if question.lower() == 'q':
         break
-    code_chunks = retriever.invoke(question)
-    result = chain.invoke({"code": code_chunks, "question": question})
-    print(result)
+    with console.status("[bold cyan]Retrieving relevant code…[/bold cyan]", spinner="dots"):
+        code_chunks = retriever.invoke(question)
+
+    with console.status("[bold green]Thinking…[/bold green]", spinner="dots"):
+        result = chain.invoke({"code": code_chunks, "question": question})
+
+    console.print(result)
 ```
 
 Let’s narrate this like a senior engineer sitting next to you.
@@ -378,7 +417,8 @@ If we removed the loop, you’d only answer one question and exit.
 ### Step D — retrieval happens here
 
 ```python
-code_chunks = retriever.invoke(question)
+with console.status("[bold cyan]Retrieving relevant code…[/bold cyan]", spinner="dots"):
+    code_chunks = retriever.invoke(question)
 ```
 
 This is where RAG begins.
@@ -403,13 +443,14 @@ We’ll soon explain how `retriever` achieves that using embeddings + similarity
 ### Step E — generation happens here
 
 ```python
-result = chain.invoke({"code": code_chunks, "question": question})
+with console.status("[bold green]Thinking…[/bold green]", spinner="dots"):
+    result = chain.invoke({"code": code_chunks, "question": question})
 ```
 
 This is where the program finally asks the LLM.
 
 ### Step F — print the answer
-`print(result)` shows the model output.
+`console.print(result)` shows the model output (and allows Rich styling).
 
 ---
 
@@ -631,10 +672,11 @@ Your current design says “yes”: you build/open the index when the program st
 
 ```python
 source_files = []
-for root, __, files, in os.walk(project_path):
-    for file in files:
-        if file.endswith((".py", ".ts", ".js", ".tsx")):
-            source_files.append(os.path.join(root, file))
+with console.status("[bold]Scanning files…[/bold]", spinner="dots"):
+    for root, __, files, in os.walk(project_path):
+        for file in files:
+            if file.lower().endswith((".py", ".ts", ".js", ".tsx", ".md", ".dart")):
+                source_files.append(os.path.join(root, file))
 ```
 
 Let’s unpack this carefully.
@@ -651,10 +693,10 @@ You used `__` to ignore the directories list — a Python convention meaning “
 
 If you replaced `os.walk` with a non-recursive approach, you’d miss nested folders.
 
-#### `file.endswith((...))`
+#### `file.lower().endswith((...))`
 Filters to languages you care about.
 
-Why include `.ts`, `.js`, `.tsx`?
+Why include `.ts`, `.js`, `.tsx`, plus `.md` and `.dart`?
 
 Because you want the assistant to answer questions about a mixed codebase, not just Python.
 
@@ -673,10 +715,24 @@ Builds an OS-correct path.
 
 ```python
 documents = []
-for path in source_files:
-    with open(path , 'r', encoding='utf-8') as f:
-        code = f.read()
+with Progress(
+    SpinnerColumn(),
+    TextColumn("{task.description}"),
+    BarColumn(),
+    TextColumn("{task.completed}/{task.total}"),
+    TimeElapsedColumn(),
+    transient=True,
+) as progress:
+    task_id = progress.add_task("Reading source files…", total=len(source_files))
+    for path in source_files:
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                code = f.read()
+        except (UnicodeDecodeError, OSError):
+            progress.advance(task_id)
+            continue
         documents.append(Document(page_content=code, metadata={"path": path}))
+        progress.advance(task_id)
 ```
 
 #### Why `with open(...)`
@@ -696,6 +752,14 @@ That’s only possible if you keep paths attached to chunks. This `metadata={"pa
 
 If you removed the metadata, the model would see code without origin — and your answers would become harder to trust and debug.
 
+#### Why the `try/except` exists
+Not every file you encounter in the wild is guaranteed to be readable UTF-8 text.
+
+- `UnicodeDecodeError` covers “this isn’t valid UTF-8”.
+- `OSError` covers cases like permission errors, transient read failures, or path issues.
+
+Instead of crashing the whole indexing job, the code skips unreadable files.
+
 ---
 
 ### 4.6.4 Split documents into chunks
@@ -706,7 +770,8 @@ splitter = RecursiveCharacterTextSplitter(
     chunk_overlap=100
 )
 
-chunks = splitter.split_documents(documents)
+with console.status("[bold]Splitting documents into chunks…[/bold]", spinner="dots"):
+    chunks = splitter.split_documents(documents)
 ```
 
 #### `chunk_size=800`
@@ -797,7 +862,20 @@ Without an embedding function, the vector store can’t add documents meaningful
 ### 4.6.7 Add chunk documents into the vector store
 
 ```python
-vector_store.add_documents(chunks)
+BATCH_SIZE = 64
+with Progress(
+    SpinnerColumn(),
+    TextColumn("{task.description}"),
+    BarColumn(),
+    TextColumn("{task.completed}/{task.total}"),
+    TimeElapsedColumn(),
+    transient=True,
+) as progress:
+    task_id = progress.add_task("Embedding & indexing chunks…", total=len(chunks))
+    for start in range(0, len(chunks), BATCH_SIZE):
+        batch = chunks[start:start + BATCH_SIZE]
+        vector_store.add_documents(batch)
+        progress.advance(task_id, advance=len(batch))
 ```
 
 This line is the “indexing write”.
@@ -818,12 +896,21 @@ Your current code does not explicitly de-duplicate. That’s not “wrong” for
 
 If you removed this line, the DB would be empty and retrieval would return nothing useful.
 
+#### Why batching exists
+Embedding is often the slowest part of the pipeline.
+
+By adding documents in batches:
+
+- you avoid one giant request that might time out
+- you get smoother progress reporting
+- you keep memory and latency more predictable
+
 ---
 
 ### 4.6.8 Export a retriever
 
 ```python
-retriever = vector_store.as_retriever(search_kwargs={"k": 6})
+retriever = vector_store.as_retriever(search_kwargs={"k": 10})
 ```
 
 This is the boundary object imported by `main.py`.
@@ -839,8 +926,8 @@ By wrapping the vector store, it hides the details:
 - running similarity search
 - returning top matches
 
-#### `search_kwargs={"k": 6}`
-This says: return the top 6 chunks.
+#### `search_kwargs={"k": 10}`
+This says: return the top 10 chunks.
 
 Why 6?
 
@@ -895,7 +982,7 @@ What happens conceptually inside `invoke`?
 
 1. The retriever uses the same embedding model (`OllamaEmbeddings`) to embed the question.
 2. It compares that query vector against stored chunk vectors.
-3. It selects the top `k=6` nearest chunks.
+3. It selects the top `k=10` nearest chunks.
 4. It returns those chunks (as `Document` objects) with `page_content` and `metadata`.
 
 This is **vector similarity search** in action.
@@ -915,7 +1002,7 @@ Conceptually:
 ### Step 4 — you print the answer
 
 ```python
-print(result)
+console.print(result)
 ```
 
 And the loop repeats.
