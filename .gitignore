@@ -8,3 +8,25 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Local environment files
+.env
+.env.*
+
+# Chroma (local vector DB persistence)
+chroma_code_db/
+Chroma_code_db/
+
+# Jupyter / notebooks
+.ipynb_checkpoints/
+
+# IDE/editor
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+Desktop.ini
+
+# Logs
+*.log

@@ -14,7 +14,7 @@ source_files = []
 with console.status("[bold]Scanning files…[/bold]", spinner="dots"):
     for root, __, files, in os.walk(project_path):
         for file in files:
-            if file.lower().endswith((".py", ".ts", ".js", ".tsx", ".md", ".dart")):
+            if file.lower().endswith((".py", ".ts", ".js", ".tsx", ".dart")):
                 source_files.append(os.path.join(root, file))
 
 documents = []
