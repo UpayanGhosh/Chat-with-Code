@@ -88,8 +88,6 @@ If you change these strings, you are changing which Ollama models are used.
 - Re-running indexing can add duplicate chunks to the same Chroma collection unless you add explicit de-duplication or collection resets.
 - Only these file extensions are indexed by default: `.py`, `.ts`, `.js`, `.tsx`.
 
-## Troubleshooting (common)
-
 ## 🌟 Support the Project
 If this project helped you understand RAG or helped you build your own local AI tool:
 - **Star** this repository to show your support!
