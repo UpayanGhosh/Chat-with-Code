@@ -90,6 +90,12 @@ If you change these strings, you are changing which Ollama models are used.
 
 ## Troubleshooting (common)
 
+## 🌟 Support the Project
+If this project helped you understand RAG or helped you build your own local AI tool:
+- **Star** this repository to show your support!
+- **Fork** it to experiment with different LLMs or data loaders.
+- **Open an Issue** if you find a bug or have a feature request.
+
 - **Empty/low-quality answers**: increase `k`, increase `chunk_size`, or ensure the indexed folder is the right project root.
 - **Model not found**: make sure the named Ollama models exist locally (the strings in `main.py` / `codebase.py` must match what Ollama has).
 - **Retrieval feels noisy**: reduce `k`, reduce `chunk_size`, or avoid indexing generated/vendor folders in the target codebase.
